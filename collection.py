@@ -667,6 +667,10 @@ class Collection(common.BaseObject):
         """
         if spec_or_id is None:
             spec_or_id = {}
+
+        #added by ating on 2016/09/09
+        aes.encrypt_doc(spec_or_id)
+
         if not isinstance(spec_or_id, dict):
             spec_or_id = {"_id": spec_or_id}
 
