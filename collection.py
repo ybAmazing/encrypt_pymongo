@@ -1,3 +1,4 @@
+
 # Copyright 2009-2014 MongoDB, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,6 +32,7 @@ from pymongo.message import _INSERT, _UPDATE, _DELETE
 from pymongo.read_preferences import ReadPreference
 
 from pymongo import aes
+from config import excluded_collection
 
 try:
     from collections import OrderedDict
@@ -290,7 +292,7 @@ class Collection(common.BaseObject):
             return to_save.get("_id", None)
 
     def insert(self, doc_or_docs, manipulate=True,
-               safe=None, check_keys=True, continue_on_error=False, **kwargs):
+               safe=None, check_keys=True, continue_on_error=False, auth_key=False, **kwargs):
         """Insert a document(s) into this collection.
 
         If `manipulate` is ``True``, the document(s) are manipulated using
@@ -367,17 +369,15 @@ class Collection(common.BaseObject):
         # We have to be connected to the primary to know that.
         client._ensure_connected(True)
 
-        """
+      
         docs = doc_or_docs
-        if isinstance(docs, list):
-            for i in range(len(docs)):
-                docs[i] = aes.encrypt_doc(docs[i])
-        else:
-            docs = aes.encrypt_doc(docs)
-        """
-        #added by ating  on 2016/08/30
-        docs = doc_or_docs
-        aes.encrypt_doc(docs)
+        #added by ating  on 2016/09/07
+        encrypt_flag = False
+        if not str(self.__name) in  excluded_collection:
+            encrypt_flag = True
+        if encrypt_flag:
+            aes.encrypt_doc(docs)
+        #end
 
         return_one = False
         if isinstance(docs, dict):
@@ -432,7 +432,7 @@ class Collection(common.BaseObject):
             return ids
 
     def update(self, spec, document, upsert=False, manipulate=False,
-               safe=None, multi=False, check_keys=True, **kwargs):
+               safe=None, multi=False, check_keys=True, auth_key=False, **kwargs):
         """Update a document(s) in this collection.
 
         Raises :class:`TypeError` if either `spec` or `document` is
@@ -530,10 +530,15 @@ class Collection(common.BaseObject):
         if not isinstance(upsert, bool):
             raise TypeError("upsert must be an instance of bool")
 
-        aes.encrypt_doc(spec)
-        aes.encrypt_doc(document)
-        print "spec:" + repr(spec)
-        print "document:" + repr(document)
+        #added by ating on 2016/09/07
+        encrypt_flag = False
+        if not str(self.__name) in  excluded_collection:
+            encrypt_flag = True
+        if encrypt_flag:
+            aes.encrypt_doc(spec)
+            aes.encrypt_doc(document)
+        #end
+ 
 
         client = self.database.connection
         # Need to connect to know the wire version, and may want to connect
@@ -670,7 +675,7 @@ class Collection(common.BaseObject):
 
         #added by ating on 2016/09/09
         aes.encrypt_doc(spec_or_id)
-
+        
         if not isinstance(spec_or_id, dict):
             spec_or_id = {"_id": spec_or_id}
 
@@ -743,9 +748,9 @@ class Collection(common.BaseObject):
                            *args, **kwargs).max_time_ms(max_time_ms)
 
         for result in cursor.limit(-1):
-#           added by ating on 2016/08/29          
+            #added by ating on 2016/08/29          
             aes.decrypt_doc(result)
-
+            #end
             return result
 
         return None
@@ -890,9 +895,6 @@ class Collection(common.BaseObject):
         .. mongodoc:: find
         .. _localThreshold: http://docs.mongodb.org/manual/reference/mongos/#cmdoption-mongos--localThreshold
         """
-
-        print args
-
         if not 'slave_okay' in kwargs:
             kwargs['slave_okay'] = self.slave_okay
         if not 'read_preference' in kwargs:
@@ -903,9 +905,9 @@ class Collection(common.BaseObject):
             kwargs['secondary_acceptable_latency_ms'] = (
                 self.secondary_acceptable_latency_ms)
 
-        args = aes.encrypt_doc(list(args))
-
-        print args
+        #added by ating on 2016/09/07
+        if not str(self.__name) in  excluded_collection:
+            args = aes.encrypt_doc(list(args))
 
         return Cursor(self, *args, **kwargs)
 
@@ -1368,14 +1370,19 @@ class Collection(common.BaseObject):
         result, conn_id = self.__database._command(
             "aggregate", self.__name, **command_kwargs)
 
-        if 'cursor' in result:
-            return CommandCursor(
-                self,
-                result['cursor'],
-                conn_id,
-                command_kwargs.get('compile_re', True))
+        #modified by ating on 2016/08/30
+        if 'cursor' in result: 
+            temp = CommandCursor(
+                    self,
+                    result['cursor'],
+                    conn_id,
+                    command_kwargs.get('compile_re', True))
+            aes.decrypt_doc(temp)
+            return temp
         else:
+            aes.decrypt_doc(result)
             return result
+        #end
 
     # TODO key and condition ought to be optional, but deprecation
     # could be painful as argument order would have to change.
